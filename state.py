@@ -22,23 +22,18 @@ class State:
 		self.p = self.p.astype(int)
 		self.b = int(self.b/self.prices_bucket_size)
 
-	def get_valid_actions(self):
-		"""
-		Return a range of valid actions for each ticker. 
-		How numbers map to actions:
-		[1, max_tokens]: Buying 
-		0: Holding all stocks
-		[-1, -max_tokens]: Selling
-		"""
-		ranges = []
-		for idx in range(len(self.h)):
-			num_stocks = self.h[idx]
-			max_action = self.max_stocks - num_stocks
-			min_action = -1*num_stocks
-			ranges.append((min_action, max_action))
+	def is_valid_action(self, action):
+		
+		## check 1: enough stocks
+		for i in range(len(self.h)):
+			if self.h[i] + action[i] < 0: return False
+			if self.h[i] + action[i] > self.max_stocks: return False
 
-		return ranges
+		## check 2: new balance is non-negative
+		new_balance = self.b*self.balance_bucket_size
+		for i in range(len(self.h)):
+			new_balance += action[i] * self.p[i]*self.prices_bucket_size
+		if new_balance < 0: return False
 
-
-     
+		return True
 

@@ -3,6 +3,7 @@ import random
 
 from data_preprocessing import Data
 from state import State
+from utils import generate_combinations
 
 class StockTradingEnv:
     def __init__(self, initial_balance: float, max_stocks: int, n_tickers: int, gamma: float, alpha: float, epsilon: float):
@@ -17,27 +18,35 @@ class StockTradingEnv:
         self.max_stocks = max_stocks
         self.n_tickers = 2
         self.actions_per_ticker = 2*self.max_stocks + 1 
+        self.possible_actions = generate_combinations([self.max_stocks]*self.n_tickers)
         self.Q = dict()
         self.gamma = gamma
         self.alpha = alpha
         self.epsilon = epsilon 
 
     def get_next_action(self, s: State):
-        valid_actions = s.get_valid_actions()
-        action = []
 
-        if random.uniform(0, 1) >= self.epsilon:
-            for idx in len(valid_actions):
-                # Find best action among all valid ones.
+        if random.uniform(0, 1) >= self.epsilon: ## select best action
+            best_action = None
+            best_Qval = -1
+            for action in self.possible_actions:
+                if s.is_valid_action(action):
+                    if self.Q[(s,action)] > best_Qval:
+                        best_action = action
+            action = best_action
 
-        else:
-            for idx in len(valid_actions):
-                # TODO: check new balance
-                action.append(random.randint(valid_actions[idx][0], valid_actions[idx][1]))
+        else: ## select random action
+            valid_actions = []
+            for action in self.possible_actions:
+                if s.is_valid_action(action):
+                    valid_actions.append(action)
+            action = random.sample(valid_actions)
+        
+        return action
             
     def update(self, s: int, a: int, r: float, s_prime: int):
         # TODO: update
-        self.Q[s, a] += self.alpha*(r + (self.gamma*self.Q[s_prime, self.get_next_action(s_prime)]) - self.Q[s, a])
+        self.Q[(s, a)] += self.alpha*(r + (self.gamma*self.Q[(s_prime, self.get_next_action(s_prime))]) - self.Q[(s, a)])
         
     def set_epsilon(self, epsilon: float):
         self.epsilon = epsilon
@@ -51,3 +60,4 @@ epochs = 1000  # Number of epochs for training
 
 filenames = ['archive/etfs/VOO.csv', 'archive/etfs/VTI.csv']
 data = Data(filenames)
+
