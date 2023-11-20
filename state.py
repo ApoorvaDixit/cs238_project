@@ -2,7 +2,7 @@ import numpy as np
 
 # Should we use bucketing to create a discrete state space for Q learning
 class State:
-	def __int__(self, b : float, p : np.ndarray, h : np.ndarray, max_stocks : int):
+	def __init__(self, b : float, p : np.ndarray, h : np.ndarray, max_stocks : int):
 		"""
 		self.b: Balance at the state.
 		self.p: Numpy array of prices of all stickers being tracked, dtype = float.
@@ -13,7 +13,7 @@ class State:
 		self.p = p
 		self.h = h
 		self.prices_bucket_size = 1.0
-		self.balance_bucket_size = 50.0
+		self.balance_bucket_size = 5.0
 		self.discretize()
 		self.max_stocks = max_stocks
   
@@ -27,13 +27,16 @@ class State:
 		## check 1: enough stocks
 		for i in range(len(self.h)):
 			if self.h[i] + action[i] < 0: return False
-			if self.h[i] + action[i] > self.max_stocks: return False
 
 		## check 2: new balance is non-negative
 		new_balance = self.b*self.balance_bucket_size
 		for i in range(len(self.h)):
-			new_balance += action[i] * self.p[i]*self.prices_bucket_size
+			new_balance -= action[i] * self.p[i]*self.prices_bucket_size
 		if new_balance < 0: return False
 
 		return True
+
+	def get_tup(self):
+		ids = [self.b] + [p for p in self.p] + [h for h in self.h]
+		return tuple(ids)
 

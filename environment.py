@@ -1,6 +1,10 @@
 import numpy as np
 import random
 
+from datetime import datetime, timedelta
+from tqdm import tqdm
+from collections import defaultdict
+
 from data_preprocessing import Data
 from state import State
 from utils import generate_combinations
@@ -9,7 +13,7 @@ class StockTradingEnv:
     def __init__(self, initial_balance: float, max_stocks: int, n_tickers: int, gamma: float, alpha: float, epsilon: float):
         """
         self.initial_balance: Amount of money that the model starts with. We assume that we have no stocks at the starting state.
-        self.max_stocks: The maximum number of units of any stock we can own.
+        self.max_stocks: The maximum number of units of any stock we can buy or sell in an action.
         self.n_tickers: Number of stocks our model will trade on. 
         self.actions_per_ticker: The number of actions we can take per ticker. For each ticker, we can hold, or buy/sell up to self.max_stocks units. 
         self.Q: Dictionary of (state, action) pairs to utility. Populated dynamically.
@@ -19,7 +23,9 @@ class StockTradingEnv:
         self.n_tickers = 2
         self.actions_per_ticker = 2*self.max_stocks + 1 
         self.possible_actions = generate_combinations([self.max_stocks]*self.n_tickers)
-        self.Q = dict()
+        # print(self.possible_actions)
+        self.Q = defaultdict(float)
+        self.state_count = defaultdict(int)
         self.gamma = gamma
         self.alpha = alpha
         self.epsilon = epsilon 
@@ -31,7 +37,9 @@ class StockTradingEnv:
             best_Qval = -1
             for action in self.possible_actions:
                 if s.is_valid_action(action):
-                    if self.Q[(s,action)] > best_Qval:
+                    if (s.get_tup(), action) not in self.Q: 
+                        self.Q[(s.get_tup(),action)] = 0
+                    if self.Q[(s.get_tup(),action)] > best_Qval:
                         best_action = action
             action = best_action
 
@@ -40,24 +48,92 @@ class StockTradingEnv:
             for action in self.possible_actions:
                 if s.is_valid_action(action):
                     valid_actions.append(action)
-            action = random.sample(valid_actions)
+            action = random.sample(valid_actions, 1)[0]
         
         return action
+
+    def get_next_state(self, s: State, a: tuple[int], prices: np.ndarray):
+        # This must be a valid action.
+        new_p = prices
+        new_h = s.h + np.array(a)
+        new_b = s.b*s.balance_bucket_size - np.sum(s.p*s.prices_bucket_size*np.array(a))
+        return State(new_b, new_p, new_h, s.max_stocks)
             
-    def update(self, s: int, a: int, r: float, s_prime: int):
-        # TODO: update
-        self.Q[(s, a)] += self.alpha*(r + (self.gamma*self.Q[(s_prime, self.get_next_action(s_prime))]) - self.Q[(s, a)])
+    def update(self, s: State, a: tuple[int], r: float, s_prime: State):
+        s_tuple = s.get_tup()
+        s_prime_tuple = s_prime.get_tup()
+        self.state_count[s_tuple] += 1
+        x_hat = self.Q[(s_tuple, a)]
+        x_new = r + (self.gamma*self.Q[(s_prime_tuple, self.get_next_action(s_prime))])
+        self.Q[(s_tuple, a)] += (x_hat*(self.state_count[s_tuple] - 1) + x_new)/self.state_count[s_tuple]
         
     def set_epsilon(self, epsilon: float):
         self.epsilon = epsilon
-
 
 # Parameters for the Q-learning algorithm
 alpha = 0.1  # Learning rate
 gamma = 0.99  # Discount factor
 epsilon = 0.1  # Exploration rate
-epochs = 1000  # Number of epochs for training
+rollouts_per_date = 1000  # Number of epochs for training
+start_dates = ['1/3/11', '1/4/11', '1/5/11', '1/6/11', '1/7/11']
+date_format = '%m/%d/%y'
+n_tickers = 2
+initial_balance = 10000.0
+max_stocks = 5
+
+env = StockTradingEnv(initial_balance, max_stocks, n_tickers, gamma, alpha, epsilon)
 
 filenames = ['archive/etfs/VOO.csv', 'archive/etfs/VTI.csv']
 data = Data(filenames)
 
+def rollout_helper(state, depth, date):
+    if depth == 0:
+        return
+    else:
+        action = env.get_next_action(state)
+        new_date = date + timedelta(days=7)
+        new_prices = np.zeros(n_tickers)
+        idx = 0
+        for ticker_dict in data.ticker_data:
+            if new_date not in ticker_dict:
+                new_prices[idx] = state.p[idx]*state.prices_bucket_size
+            else:
+                new_prices[idx] = ticker_dict[new_date]
+            idx += 1 
+        s_prime = env.get_next_state(state, action, new_prices)
+        rollout_helper(s_prime, depth-1, new_date)
+        reward = s_prime.b - state.b + np.sum(s_prime.p*s_prime.prices_bucket_size*s_prime.h) - np.sum(state.p*state.prices_bucket_size*state.h)
+        env.update(state, action, reward, s_prime)
+
+for start_date in tqdm(start_dates):
+    init_state = None 
+    init_date = datetime.strptime(start_date, date_format)
+    init_b = initial_balance
+    init_h = np.zeros(n_tickers)
+    init_p = np.zeros(n_tickers)
+    idx = 0
+    for ticker_dict in data.ticker_data:
+        init_p[idx] = ticker_dict[init_date]
+        idx += 1 
+    init_state = State(init_b, init_p, init_h, max_stocks)
+    rollout_depth = 50
+    for rollout in tqdm(range(rollouts_per_date)):
+        rollout_helper(init_state, rollout_depth, init_date)
+        
+learned_q_vals = env.Q
+# State -> (Best Action, Utility)
+best_actions = dict()
+for k, v in learned_q_vals.items():
+    s, a = k
+    if s in best_actions:
+        if v > best_actions[s][1]:
+            best_actions[s] = a, v
+    else:
+        best_actions[s] = a, v        
+    
+f = open('q.policy', "w")
+for state, action in best_actions.items():
+    f.write('%s %s' % (state, action[0]))
+
+
+f.close()
