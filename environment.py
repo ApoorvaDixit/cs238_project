@@ -15,15 +15,12 @@ class StockTradingEnv:
         self.initial_balance: Amount of money that the model starts with. We assume that we have no stocks at the starting state.
         self.max_stocks: The maximum number of units of any stock we can buy or sell in an action.
         self.n_tickers: Number of stocks our model will trade on. 
-        self.actions_per_ticker: The number of actions we can take per ticker. For each ticker, we can hold, or buy/sell up to self.max_stocks units. 
         self.Q: Dictionary of (state, action) pairs to utility. Populated dynamically.
         """
         self.initial_balance = initial_balance
         self.max_stocks = max_stocks
-        self.n_tickers = 2
-        self.actions_per_ticker = 2*self.max_stocks + 1 
+        self.n_tickers = n_tickers
         self.possible_actions = generate_combinations([self.max_stocks]*self.n_tickers)
-        # print(self.possible_actions)
         self.Q = defaultdict(float)
         self.state_count = defaultdict(int)
         self.gamma = gamma
@@ -32,9 +29,9 @@ class StockTradingEnv:
 
     def get_next_action(self, s: State):
 
-        if random.uniform(0, 1) >= self.epsilon: ## select best action
+        if random.uniform(0, 1) > self.epsilon: ## select best action
             best_action = None
-            best_Qval = -1
+            best_Qval = -1e12
             for action in self.possible_actions:
                 if s.is_valid_action(action):
                     if (s.get_tup(), action) not in self.Q: 
@@ -67,19 +64,17 @@ class StockTradingEnv:
         x_new = r + (self.gamma*self.Q[(s_prime_tuple, self.get_next_action(s_prime))])
         self.Q[(s_tuple, a)] += (x_hat*(self.state_count[s_tuple] - 1) + x_new)/self.state_count[s_tuple]
         
-    def set_epsilon(self, epsilon: float):
-        self.epsilon = epsilon
-
 # Parameters for the Q-learning algorithm
 alpha = 0.1  # Learning rate
-gamma = 0.99  # Discount factor
+gamma = 0.9  # Discount factor
 epsilon = 0.1  # Exploration rate
-rollouts_per_date = 1000  # Number of epochs for training
+rollouts_per_date = 3000  # Number of epochs for training
 start_dates = ['1/3/11', '1/4/11', '1/5/11', '1/6/11', '1/7/11']
 date_format = '%m/%d/%y'
 n_tickers = 2
 initial_balance = 10000.0
 max_stocks = 5
+rollout_depth = 50
 
 env = StockTradingEnv(initial_balance, max_stocks, n_tickers, gamma, alpha, epsilon)
 
@@ -105,35 +100,35 @@ def rollout_helper(state, depth, date):
         reward = s_prime.b - state.b + np.sum(s_prime.p*s_prime.prices_bucket_size*s_prime.h) - np.sum(state.p*state.prices_bucket_size*state.h)
         env.update(state, action, reward, s_prime)
 
-for start_date in tqdm(start_dates):
-    init_state = None 
-    init_date = datetime.strptime(start_date, date_format)
-    init_b = initial_balance
-    init_h = np.zeros(n_tickers)
-    init_p = np.zeros(n_tickers)
-    idx = 0
-    for ticker_dict in data.ticker_data:
-        init_p[idx] = ticker_dict[init_date]
-        idx += 1 
-    init_state = State(init_b, init_p, init_h, max_stocks)
-    rollout_depth = 50
-    for rollout in tqdm(range(rollouts_per_date)):
-        rollout_helper(init_state, rollout_depth, init_date)
+if __name__ == '__main__':
+
+    for start_date in tqdm(start_dates):
+        init_state = None 
+        init_date = datetime.strptime(start_date, date_format)
+        init_b = initial_balance
+        init_h = np.zeros(n_tickers)
+        init_p = np.zeros(n_tickers)
+        idx = 0
+        for ticker_dict in data.ticker_data:
+            init_p[idx] = ticker_dict[init_date]
+            idx += 1 
+        init_state = State(init_b, init_p, init_h, max_stocks)
+        for rollout in tqdm(range(rollouts_per_date)):
+            rollout_helper(init_state, rollout_depth, init_date)
+            
+    learned_q_vals = env.Q
+    # State -> (Best Action, Utility)
+    best_actions = dict()
+    for k, v in learned_q_vals.items():
+        s, a = k
+        if s in best_actions:
+            if v > best_actions[s][1]:
+                best_actions[s] = a, v
+        else:
+            best_actions[s] = a, v        
         
-learned_q_vals = env.Q
-# State -> (Best Action, Utility)
-best_actions = dict()
-for k, v in learned_q_vals.items():
-    s, a = k
-    if s in best_actions:
-        if v > best_actions[s][1]:
-            best_actions[s] = a, v
-    else:
-        best_actions[s] = a, v        
-    
-f = open('q.policy', "w")
-for state, action in best_actions.items():
-    f.write('%s %s' % (state, action[0]))
+    f = open('q_eps_%s_rollouts_%s_depth_%s.policy' % (epsilon, rollouts_per_date, rollout_depth), "w")
+    for state, action in best_actions.items():
+        f.write('%s %s\n' % (state, action[0]))
 
-
-f.close()
+    f.close()

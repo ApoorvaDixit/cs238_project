@@ -20,7 +20,7 @@ class State:
 	def discretize(self):
 		self.p = self.p/self.prices_bucket_size
 		self.p = self.p.astype(int)
-		self.b = int(self.b/self.prices_bucket_size)
+		self.b = int(self.b/self.balance_bucket_size)
 
 	def is_valid_action(self, action):
 		
