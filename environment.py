@@ -97,7 +97,7 @@ def rollout_helper(state, depth, date):
             idx += 1 
         s_prime = env.get_next_state(state, action, new_prices)
         rollout_helper(s_prime, depth-1, new_date)
-        reward = s_prime.b - state.b + np.sum(s_prime.p*s_prime.prices_bucket_size*s_prime.h) - np.sum(state.p*state.prices_bucket_size*state.h)
+        reward = (s_prime.b - state.b)*s_prime.balance_bucket_size + np.sum(s_prime.p*s_prime.prices_bucket_size*s_prime.h) - np.sum(state.p*state.prices_bucket_size*state.h)
         env.update(state, action, reward, s_prime)
 
 if __name__ == '__main__':

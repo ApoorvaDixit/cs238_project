@@ -4,11 +4,16 @@ Evaluate learned policy on held-out test data.
 from tqdm import tqdm
 import numpy as np
 from datetime import datetime, timedelta
+import random
 
 from data_preprocessing import Data
 from state import State
 from utils import extract_tuples
 from environment import StockTradingEnv
+
+np.random.seed(42)
+random.seed(42)
+# torch.manual_seed(42)
 
 alpha = 0.1  # Learning rate
 gamma = 0.9  # Discount factor
@@ -55,7 +60,7 @@ def rollout_helper(state, depth, date, policy):
                 new_prices[idx] = ticker_dict[new_date]
             idx += 1 
         s_prime = env.get_next_state(state, action, new_prices)
-        reward = s_prime.b - state.b + np.sum(s_prime.p*s_prime.prices_bucket_size*s_prime.h) - np.sum(state.p*state.prices_bucket_size*state.h)
+        reward = (s_prime.b - state.b)*s_prime.balance_bucket_size + np.sum(s_prime.p*s_prime.prices_bucket_size*s_prime.h) - np.sum(state.p*state.prices_bucket_size*state.h)
         reward += gamma*rollout_helper(s_prime, depth-1, new_date, policy)
         return reward
 
