@@ -13,7 +13,7 @@ class State:
 		self.p = p
 		self.h = h
 		self.prices_bucket_size = 1.0
-		self.balance_bucket_size = 2.0
+		self.balance_bucket_size = 1.0
 		self.discretize()
 		self.max_stocks = max_stocks
   

@@ -27,6 +27,10 @@ class StockTradingEnv:
         self.alpha = alpha
         self.epsilon = epsilon 
 
+    def reset_for_rollout(self):
+        self.Q = defaultdict(float)
+        self.state_count = defaultdict(int)
+
     def get_next_action(self, s: State):
 
         if random.uniform(0, 1) > self.epsilon: ## select best action
@@ -61,9 +65,17 @@ class StockTradingEnv:
         s_prime_tuple = s_prime.get_tup()
         self.state_count[s_tuple] += 1
         x_hat = self.Q[(s_tuple, a)]
-        x_new = r + (self.gamma*self.Q[(s_prime_tuple, self.get_next_action(s_prime))])
+        next_action = self.get_next_action(s_prime)
+        x_new = r + (self.gamma*self.Q[(s_prime_tuple, next_action)])
+        # (6, 106, 59, 84.0, 0.0) (0, 0) 600
+        # if s.b == 10000 and s.p[0] == 115 and s.p[1] == 65 and s.h[0] == 0 and s.h[1] == 0:
+            # print("reward: " + str(r))
+            # print("Q before update: " + str(self.Q[(s_tuple, a)]))
+            # print("Next action Q: " + str(self.Q[(s_prime_tuple, next_action)]))
         self.Q[(s_tuple, a)] += (x_hat*(self.state_count[s_tuple] - 1) + x_new)/self.state_count[s_tuple]
-        
+        # if s.b == 10000 and s.p[0] == 115 and s.p[1] == 65 and s.h[0] == 0 and s.h[1] == 0:
+            # print("Q after update: " + str(self.Q[(s_tuple, a)]))
+
 # Parameters for the Q-learning algorithm
 alpha = 0.1  # Learning rate
 gamma = 0.9  # Discount factor
@@ -102,6 +114,8 @@ def rollout_helper(state, depth, date):
 
 if __name__ == '__main__':
 
+    Q_vals = defaultdict(float)
+
     for start_date in tqdm(start_dates):
         init_state = None 
         init_date = datetime.strptime(start_date, date_format)
@@ -115,8 +129,11 @@ if __name__ == '__main__':
         init_state = State(init_b, init_p, init_h, max_stocks)
         for rollout in tqdm(range(rollouts_per_date)):
             rollout_helper(init_state, rollout_depth, init_date)
+            for k, v in env.Q.items():
+                Q_vals[k] += v/rollouts_per_date
+            env.reset_for_rollout()
             
-    learned_q_vals = env.Q
+    learned_q_vals = Q_vals
     # State -> (Best Action, Utility)
     best_actions = dict()
     for k, v in learned_q_vals.items():
@@ -129,6 +146,6 @@ if __name__ == '__main__':
         
     f = open('q_eps_%s_rollouts_%s_depth_%s.policy' % (epsilon, rollouts_per_date, rollout_depth), "w")
     for state, action in best_actions.items():
-        f.write('%s %s\n' % (state, action[0]))
+        f.write('%s %s %s\n' % (state, action[0], action[1]))
 
     f.close()
