@@ -136,16 +136,29 @@ if __name__ == '__main__':
     learned_q_vals = Q_vals
     # State -> (Best Action, Utility)
     best_actions = dict()
+    utilities = dict()
     for k, v in learned_q_vals.items():
         s, a = k
+        utilities[(s,a)] = (v,)
         if s in best_actions:
             if v > best_actions[s][1]:
                 best_actions[s] = a, v
+                #utilities[s] = (v,)
         else:
-            best_actions[s] = a, v        
+            best_actions[s] = a, v    
+            #utilities[s] = (v,)
         
     f = open('q_eps_%s_rollouts_%s_depth_%s.policy' % (epsilon, rollouts_per_date, rollout_depth), "w")
     for state, action in best_actions.items():
         f.write('%s %s %s\n' % (state, action[0], action[1]))
 
     f.close()
+
+    f = open('q_eps_%s_rollouts_%s_depth_%s.utilities' % (epsilon, rollouts_per_date, rollout_depth), "w")
+    for state, utility in utilities.items():
+        f.write('%s %s\n' % (state, utility))
+
+    f.close()
+
+## Q learning -> (state,action) + Q(s,a) -> logging all this
+## kernel smoothin -> Q(s,a) -> sample a batch -> s_prime-> Q(s_sprime,action_k) -> PICK ACTION THAT MAXIMIZES Q
