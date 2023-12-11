@@ -52,7 +52,9 @@ def load_theta(theta_filename,n):
 
 def kernel(sk,s):
     #Inverse L1 loss between sk and s
-    pass
+    net_worth_sk = sk.b + np.sum(sk.p*sk.h)
+    net_worth_s = s.b + np.sum(s.p*s.h)
+    return 1.0/abs(net_worth_s - net_worth_sk)
 
 def kernel_smoothing(basis,state,action):
     q_calc = 0
